@@ -1,11 +1,14 @@
+import re
+
+from datetime import date
 from functools import cached_property
 
 from bs4 import BeautifulSoup
 
 from . import threadable, utils
-from .common import get_work_from_banner
+from .common import get_work_from_banner, get_series_from_banner
 from .requester import requester
-
+from .users import User
 
 class Collection:
     def __init__(self, collectionid, session=None, load=True):
