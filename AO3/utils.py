@@ -237,6 +237,27 @@ def collectionid_from_url(url):
             return str(collectionid)
     return
 
+def seriesid_from_url(url):
+    """Get the seriesid from an archiveofourown.org website url
+
+    Args:
+        url (str): Series URL 
+
+    Returns:
+        int: Series ID
+    """
+    from .works import Work
+    split_url = url.split("/")
+    try:
+        index = split_url.index("series")
+    except ValueError:
+        return
+    if len(split_url) >= index + 1:
+        workid = split_url[index + 1].split("?")[0]
+        if workid.isdigit():
+            return int(workid)
+    return
+
 def comment(commentable, comment_text, session, fullwork=False, commentid=None, email="", name="", pseud=None):
     """Leaves a comment on a specific work
 
@@ -576,7 +597,7 @@ def collect(collectable, session, collections):
     Args:
         work (Work): Work object
         session (AO3.Session): Session object
-        collections (list, optional): What collections to add this work to. Defaults to None.
+        collections (list): What collections to add this work to.
     """
     
     if session is None: session = collectable.session
