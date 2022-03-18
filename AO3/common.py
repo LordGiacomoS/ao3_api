@@ -159,6 +159,117 @@ def get_work_from_banner(work):
     
     return new
 
+def get_series_from_banner(series):
+    #* These imports need to be here to prevent circular imports
+    #* (series.py would requite common.py and vice-versa)
+    from .series import Series
+    from .users import User
+    
+    authors = []
+    try:
+        for a in series.h4.find_all("a"):
+            if 'rel' in a.attrs.keys():
+                if "author" in a['rel']:
+                    authors.append(User(a.string, load=False))
+            elif a.attrs["href"].startswith("/works"):
+                pass
+            elif a.attrs["href"].startswith("/collections"):
+                pass
+            elif a.attrs["href"].startswith("/series"):
+                seriesname = a.string
+                seriesid = utils.seriesid_from_url(a['href'])
+            
+    except AttributeError:
+        pass
+            
+    new = Series(seriesid, load=False)
+    
+    fandoms = []
+    try:
+        for a in series.find("h5", {"class": "fandoms"}).find_all("a"):
+            fandoms.append(a.string)
+    except AttributeError:
+        pass
+
+    warnings = []
+    relationships = []
+    characters = []
+    freeforms = []
+    try:
+        for a in series.find(attrs={"class": "tags"}).find_all("li"):
+            if "warnings" in a['class']:
+                warnings.append(a.text)
+            elif "relationships" in a['class']:
+                relationships.append(a.text)
+            elif "characters" in a['class']:
+                characters.append(a.text)
+            elif "freeforms" in a['class']:
+                freeforms.append(a.text)
+    except AttributeError:
+        pass
+
+    reqtags = series.find(attrs={"class": "required-tags"})
+    if reqtags is not None:
+        rating = reqtags.find(attrs={"class": "rating"})
+        if rating is not None:
+            rating = rating.text
+        categories = reqtags.find(attrs={"class": "category"})
+        if categories is not None:
+            categories = categories.text.split(", ")
+        complete = reqtags.find(attrs={"title": "Series in Progress"})
+        if complete is not None:
+            complete = complete.text
+    else:
+        rating = categories = complete = None
+
+    summary = series.find(attrs={"class": "userstuff summary"})
+    if summary is not None:
+        summary = summary.text
+
+    stats = series.find("dl", {"class": "stats"})
+    if stats is not None:
+        words = stats.find("dt", string="Words:").next_sibling
+        if words is not None:
+            words = words.text.replace(",", "")
+            if words.isdigit(): words = int(words)
+            else: words = None
+        bookmarks = stats.find("dt", string="Bookmarks:").next_sibling
+        if bookmarks is not None:
+            bookmarks = bookmarks.text.replace(",", "")
+            if bookmarks.isdigit(): bookmarks = int(bookmarks)
+            else: bookmarks = None
+        works = stats.find("dt", string="Works:").next_sibling
+        if works is not None:
+            works = works.text.replace(",", "")
+            if works.isdigit(): works = int(works)
+            else: works = None
+    else:
+        words = bookmarks = works = None
+
+    date = series.find("p", {"class": "datetime"})
+    if date is None:
+        date_updated = None
+    else:
+        date_updated = datetime.datetime.strptime(date.getText(), "%d %b %Y")
+
+    __setifnotnone(new, "authors", authors)
+    __setifnotnone(new, "bookmarks", bookmarks)
+    __setifnotnone(new, "categories", categories)
+    __setifnotnone(new, "characters", characters)
+    __setifnotnone(new, "complete", complete)
+    __setifnotnone(new, "date_updated", date_updated)
+    __setifnotnone(new, "fandoms", fandoms)
+    __setifnotnone(new, "rating", rating)
+    __setifnotnone(new, "relationships", relationships)
+    __setifnotnone(new, "summary", summary)
+    __setifnotnone(new, "tags", freeforms)
+    __setifnotnone(new, "name", seriesname)
+    __setifnotnone(new, "warnings", warnings)
+    __setifnotnone(new, "words", words)
+    __setifnotnone(new, "works", works)
+    
+    return new
+
 def url_join(base, *args):
     result = base
     for arg in args:
