@@ -80,7 +80,7 @@ class Collection:
         if "Error 404" in self._soup.text:
             raise utils.InvalidIdError("Cannot find collection")
 
-@cached_property
+    @cached_property
     def url(self):
         """Returns the URL to this collection
 
