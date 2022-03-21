@@ -1,5 +1,6 @@
 from . import extra, utils
 from .chapters import Chapter
+from .collections import Collection
 from .comments import Comment
 from .search import Search
 from .series import Series
