@@ -6,5 +6,6 @@ from .series import Series
 from .session import GuestSession, Session
 from .users import User
 from .works import Work
+from .collections import Collection
 
 VERSION = "2.2.1"

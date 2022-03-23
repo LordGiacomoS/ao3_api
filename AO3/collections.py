@@ -1,4 +1,5 @@
 import re
+import lxml
 
 from datetime import date
 from functools import cached_property
@@ -6,7 +7,7 @@ from functools import cached_property
 from bs4 import BeautifulSoup
 
 from . import threadable, utils
-from .common import get_work_from_banner, get_series_from_banner
+from .common import get_work_from_banner, get_series_from_banner, url_join
 from .requester import requester
 from .users import User
 
@@ -80,7 +81,7 @@ class Collection:
         if "Error 404" in self._soup.text:
             raise utils.InvalidIdError("Cannot find collection")
 
-@cached_property
+    @cached_property
     def url(self):
         """Returns the URL to this collection
 
@@ -303,7 +304,6 @@ class Collection:
             elif "/series/" in str(item.h4.contents):
                 self._bookmarks.append(get_series_from_banner(item))
 
-
     @cached_property
     def _works_pages(self):
         self._soup_works = self.request(f"https://archiveofourown.org/collections/{self.id}/works")
@@ -326,7 +326,6 @@ class Collection:
             int: Amount of pages
         """
         return self._works_pages
-    
     
     @cached_property
     def work_list(self):
@@ -352,7 +351,171 @@ class Collection:
         #     setattr(new, "authors", authors)
         #     works.append(new)
         return works
+
+    def _manage_items_pages(self, session, type):
+        if type == "awaiting_approval" or type == "" or type is None:
+            url = f"https://archiveofourown.org/collections/{self.id}/items"
+        if type == "invited":
+            url = f"https://archiveofourown.org/collections/{self.id}/items?invited=true"
+        if type == "rejected":
+            url = f"https://archiveofourown.org/collections/{self.id}/items?rejected=true"
+        if type == "approved":
+            url = f"https://archiveofourown.org/collections/{self.id}/items?approved=true"
+
+        page_tag = ("&amp;page=")
+        self._soup_items = self.request(f"{url}{page_tag}1")
+        
+        pages = self._soup_items.find("ol", {"class": "pagination actions"})
+        if pages is None:
+            return 1
+        n = 1
+        for li in pages.findAll("li"):
+            text = li.getText()
+            if text.isdigit():
+                n = int(text)
+        return n
     
+    def _manage_items_action(self, session, type, item_num=None, action=None, item_amt=None, start_from=None):
+        if start_from is None:
+            start_from = 1
+        self._soup = self._manage_items_list(session, type, item_amt, start_from)
+        if item_num is None and action is not None:
+            raise utils.UnselectedError(f"Item to {action} is unspecified.")
+        if item_num is not None and action is None:
+            raise utils.UnselectedError("No action is specified for this item.")
+
+        if type == "awaiting_approval" or type == "" or type is None:
+            url = f"https://archiveofourown.org/collections/{self.id}/items"
+        if type == "invited":
+            url = f"https://archiveofourown.org/collections/{self.id}/items?invited=true"
+        if type == "rejected":
+            url = f"https://archiveofourown.org/collections/{self.id}/items?rejected=true"
+        if type == "approved":
+            url = f"https://archiveofourown.org/collections/{self.id}/items?approved=true"
+
+        page, item = divmod(item_num, 20)
+        item_loc = int(item*2)-1
+        print (page+1, item_loc)
+        self._soup_items = self.request(url_join(url, f"&amp;page={page+1}"))
+                                        
+        item_html = self._soup_items.find("form", {"method": "post"})
+        
+        self.authenticity_token = self._soup_items.find("meta", {"name": "csrf-token"}).get('content')
+      
+        count = 1
+        if item_html is not None:
+            for h4 in item_html.find_all("h4"):
+                if count == item_loc:
+                    id = h4.get('id')
+                count += 1
+            idnum = id.split("_")[2]
+        if item_html is None:
+            raise utils.BlankError("No items in this category to be reviewed.")
+
+        if self.authenticity_token is not None:
+            at = self.authenticity_token
+        else:
+            at = session.authenticity_token
+
+        data = {
+            "authenticity_token": at,
+            "commit": "Submit",
+            "_method": "patch"
+        }
+        
+        if action == "unreview": data[f"collection_items[{idnum}][collection_approval_status]"] = "unreviewed"
+        if action == "approve": data[f"collection_items[{idnum}][collection_approval_status]"] = "approved"
+        if action == "reject": data[f"collection_items[{idnum}][collection_approval_status]"] = "rejected"
+
+        if action == "remove": data[f"collection_items[{idnum}][remove]"] = "1"
+        url = f"https://archiveofourown.org/collections/{self.id}/items/update_multiple"
+        req = session.session.post(url, data=data)
+      
+        print(req.status_code)
+      
+        if req.status_code == 302:
+            print(req.headers["Location"])
+            if req.headers["Location"] == utils.AO3_AUTH_ERROR_URL:
+                raise utils.AuthError("Invalid authentication token. Try calling session.refresh_auth_token()")
+  
+    def _manage_items_list(self, session, type="", item_amt=None, start_from=None):
+        from .works import Work
+        from .series import Series
+          
+        start_page, start_item = divmod(start_from, 20)
+      
+        if type == "awaiting_approval" or type == "" or type is None:
+            url = f"https://archiveofourown.org/collections/{self.id}/items"
+        if type == "invited":
+            url = f"https://archiveofourown.org/collections/{self.id}/items?invited=true"
+        if type == "rejected":
+            url = f"https://archiveofourown.org/collections/{self.id}/items?rejected=true"
+        if type == "approved":
+            url = f"https://archiveofourown.org/collections/{self.id}/items?approved=true"
+
+        self._soup_items = self.request(f"{url}&amp;page=1")
+        ol = self._soup_items.find("ol", {"class": "pagination actions"})
+
+        if ol is None:
+            pages = 1
+        pages = 1
+        for li in ol.findAll("li"):
+            text = li.getText()
+            if text.isdigit():
+                pages = int(text)
+                  
+        items = []
+        count = 0
+
+        for page in range(start_page, pages):
+            if page+1 != 0:
+                self._page_soup_items = self.request(f"{url}&amp;page={page+1}")
+                item_list = self._page_soup_items.find("form", {"method": "post"})
+
+            if item_list is not None:
+                for item in item_list.find_all("li", {"class": "collection item picture blurb group"}):
+                    if item_amt is not None and len(items) >= item_amt:
+                        return items
+                    
+                    for h4 in item.find_all("h4"):
+                        if h4.get('id') is not None:
+                            continue
+                        count += 1
+                        if count <= start_item:
+                            continue
+                        for a in h4.find_all("a"):
+                            if a.attrs["href"].startswith("/series/"):
+                                seriesname = a.string
+                                seriesid = utils.seriesid_from_url(a['href'])
+                                new = Series(seriesid, load=False)
+                                if seriesname is not None:
+                                      setattr(new, "name", seriesname)
+                            if a.attrs["href"].startswith("/collections/"):
+                                workname = a.string
+                                workid = utils.workid_from_url(a['href'])
+                                new = Work(workid, load=False)
+                                if workname is not None:
+                                    setattr(new, "title", workname)
+                        if new is not None:
+                            items.append(new)
+            if item_list is None:
+                items = "No items in this category."
+        return items
+
+    def print_management_list(self, session, type=None, item_amt=None, start_from=None):
+        if start_from is None:
+            start_from = 1
+
+        manage_list = self._manage_items_list(session, type, item_amt, start_from)
+        
+        if isinstance(manage_list, list):
+            for num, item in enumerate(manage_list, start_from):
+                print(num, item)
+            if item_amt is not None and len(manage_list) < item_amt:
+                print(f"Remaining items in category is less than {item_amt}. ({len(manage_list)})")
+        elif isinstance(manage_list, str):
+            print(manage_list)
+      
     def get(self, *args, **kwargs):
         """Request a web page and return a Response object"""  
         
