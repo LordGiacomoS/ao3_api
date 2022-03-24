@@ -1,6 +1,3 @@
-import re
-import lxml
-
 from datetime import date
 from functools import cached_property
 
@@ -329,6 +326,12 @@ class Collection:
     
     @cached_property
     def work_list(self):
+        """
+        Returns the works a collection has
+
+        Returns:
+            list: Works
+        """
         self._soup = self.request(f"https://archiveofourown.org/collections/{self.id}/works")
         ol = self._soup.find("ol", {"class": "work index group"})
         works = []
@@ -352,35 +355,24 @@ class Collection:
         #     works.append(new)
         return works
 
-    def _manage_items_pages(self, session, type):
-        if type == "awaiting_approval" or type == "" or type is None:
-            url = f"https://archiveofourown.org/collections/{self.id}/items"
-        if type == "invited":
-            url = f"https://archiveofourown.org/collections/{self.id}/items?invited=true"
-        if type == "rejected":
-            url = f"https://archiveofourown.org/collections/{self.id}/items?rejected=true"
-        if type == "approved":
-            url = f"https://archiveofourown.org/collections/{self.id}/items?approved=true"
 
-        page_tag = ("&amp;page=")
-        self._soup_items = self.request(f"{url}{page_tag}1")
-        
-        pages = self._soup_items.find("ol", {"class": "pagination actions"})
-        if pages is None:
-            return 1
-        n = 1
-        for li in pages.findAll("li"):
-            text = li.getText()
-            if text.isdigit():
-                n = int(text)
-        return n
     
-    def _manage_items_action(self, session, type, item_num=None, action=None, item_amt=None, start_from=None):
-        if start_from is None:
-            start_from = 1
+    def _manage_items_action(self, session, type=None, item_num=None, action=None, item_amt=None, start_from=None):
+        """Creates a list works and series in the manage items tab of a collection.
+      
+        Args:
+            session (AO3.Session): Session object
+            type (str, optional): The sub-category of items to be collected. Options are "awaiting_approval", "invited", "rejected", and "approved". Defaults to "awaiting_approval".
+            item_num (int, optional): The number to identify what item to perform an action on. Based on the print_management_list numbers. Defaults to 1.
+            action (str, optional): What to do with specified 
+            item_amt (int, optional): The number of items to list. Defaults to unlimited.
+            start_from (int, optional): The item to start the list from. (Intended for continuing from a previous print_management_list if user is trying to get smaller batches for some reason.) Defaults to 1.
+        """
+
+      
         self._soup = self._manage_items_list(session, type, item_amt, start_from)
-        if item_num is None and action is not None:
-            raise utils.UnselectedError(f"Item to {action} is unspecified.")
+        if item_num is None:
+            item_num = 1
         if item_num is not None and action is None:
             raise utils.UnselectedError("No action is specified for this item.")
 
@@ -439,9 +431,23 @@ class Collection:
                 raise utils.AuthError("Invalid authentication token. Try calling session.refresh_auth_token()")
   
     def _manage_items_list(self, session, type="", item_amt=None, start_from=None):
+        """Creates a list works and series in the manage items tab of a collection.
+      
+        Args:
+            session (AO3.Session): Session object
+            type (str, optional): The sub-category of items to be collected. Options are "awaiting_approval", "invited", "rejected", and "approved". Defaults to "awaiting_approval".
+            item_amt (int, optional): The number of items to list. Defaults to unlimited.
+            start_from (int, optional): The item to start the list from. (Intended for continuing from a previous print_management_list if user is trying to get smaller batches for some reason.) Defaults to 1.
+
+        Returns:
+            list: A list of all items in the specified sub-category.
+        """
+      
         from .works import Work
         from .series import Series
-          
+
+        if start_from is None:
+            start_from = 1
         start_page, start_item = divmod(start_from, 20)
       
         if type == "awaiting_approval" or type == "" or type is None:
@@ -459,10 +465,11 @@ class Collection:
         if ol is None:
             pages = 1
         pages = 1
-        for li in ol.findAll("li"):
-            text = li.getText()
-            if text.isdigit():
-                pages = int(text)
+        if ol is not None:
+            for li in ol.findAll("li"):
+                text = li.getText()
+                if text.isdigit():
+                    pages = int(text)
                   
         items = []
         count = 0
@@ -503,6 +510,15 @@ class Collection:
         return items
 
     def print_management_list(self, session, type=None, item_amt=None, start_from=None):
+        """Prints a numbered list of all works and series in the manage items tab of a collection.
+      
+        Args:
+            session (AO3.Session): Session object
+            type (str, optional): The sub-category of items being displayed. Options are "awaiting_approval", "invited", "rejected", and "approved". Defaults to "awaiting_approval"
+            item_amt (int, optional): The number of items to list. Defaults to unlimited.
+            start_from (int, optional): The item to start the list from. (Primarily intended for continuing from a previous print_management_list if user is trying to get smaller batches for some reason like formatting.) Defaults to 1.
+        """
+
         if start_from is None:
             start_from = 1
 
@@ -513,6 +529,8 @@ class Collection:
                 print(num, item)
             if item_amt is not None and len(manage_list) < item_amt:
                 print(f"Remaining items in category is less than {item_amt}. ({len(manage_list)})")
+            if len(manage_list) < 1:
+                print(f"No items in this category.")
         elif isinstance(manage_list, str):
             print(manage_list)
       
