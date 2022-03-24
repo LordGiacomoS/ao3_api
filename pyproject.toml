@@ -1,0 +1,12 @@
+[tool]
+[tool.poetry]
+name = "ao3-api"
+version = "2.2.1"
+description = "An unofficial AO3 (archiveofourown.org) API"
+authors = ["Francisco Rodrigues <francisco.rodrigues0908@gmail.com>"]
+[tool.poetry.dependencies]
+beautifulsoup4 = "^4.10.0"
+bs4 = "^0.0.1"
+lxml = "^4.8.0"
+python = "^3.8"
+requests = "^2.26.0"
