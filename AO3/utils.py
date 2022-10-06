@@ -638,8 +638,6 @@ def collect(collectable, session, collections):
         soup = BeautifulSoup(req.content, "lxml")
         notice_div = soup.find("div", {"class": "notice"})
         
-        if notice_div is not None:
-                print(notice_div.string)
         error_div = soup.find("div", {"class": "error"})
         
         if error_div is None and notice_div is None:
